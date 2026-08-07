@@ -1,0 +1,18 @@
+install:
+  commands:
+    - [npm, ci]
+build:
+  commands:
+    - [npm, run, build]
+run:
+  command: [node, .next/standalone/server.js]
+artifacts:
+  - src: ".next/standalone/**"
+    dest: "."
+  - src: ".next/static/**"
+    dest: ".next/static"
+  - src: "public/**"
+    dest: "public"
+profile:
+  label: Ad-Streams Dashboard
+  description: Real-time propensity scoring dashboard powered by Dynamic Tables and Interactive Tables.

@@ -1,0 +1,18 @@
+definition_version: "2"
+
+entities:
+  ad_streams_dashboard:
+    type: snowflake-app
+    identifier:
+      name: AD_STREAMS_DASHBOARD
+      database: DEMO_ATAHIR
+      schema: AD_STREAMS
+    artifacts:
+      - src: ./*
+        dest: ./
+        ignore:
+          - node_modules
+          - .env*
+          - .next
+          - .git
+    query_warehouse: AD_STREAMS_WH
