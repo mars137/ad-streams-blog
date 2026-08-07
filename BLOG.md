@@ -1,40 +1,20 @@
-# Roads? Where We're Going, We Don't Need Roads
+# LoCo for Data Engineering with CoCo
 
-*How I rebuilt a month of real-time ad-tech engineering in under an hour, and what that says about where data work is headed*
+*Low-code real-time pipelines, built conversationally.*
 
 ![Hero: DeLorean in a data center with streaming cyan data](ad_streams_blog_images/00_hero_delorean_data_center.png)
 
 ---
 
-> Six distributed systems. A month of my life. I rebuilt all of it on Snowflake in under an hour, and the hard part wasn't the speed. It was realizing the hard part no longer exists.
+In 2017 I spent a month building a real-time marketing propensity engine. Ad events stream in (impressions, clicks, paid-search hits, conversions), you score every user on conversion likelihood, and you serve those scores to a dashboard fast enough for a campaign manager to act on them.
+
+It took a month because the stack was a month of work: Kafka, Kafka Connect, Kafka Streams, a Python ML service, Cassandra, Flask. Six systems, each with its own failure mode.
+
+Last week I rebuilt the same thing in under an hour using Cortex Code. Here's what happened and how to reproduce it.
 
 ---
 
-Back in 2017 I spent the better part of a month building a real-time marketing propensity engine.
-
-You know the kind. Ad events stream in: impressions, clicks, paid-search hits, conversions. You score every user on how likely they are to convert, in near real time, and you serve those scores back to a dashboard fast enough that a campaign manager can actually act on them. It's the bread and butter of every DSP, every audience platform, every Quantcast and Trade Desk you've ever heard of.
-
-It took me a month. Not because I'm slow, but because the *stack* was a month of work.
-
-Last week I rebuilt the whole thing. Start to finish. In under an hour.
-
-This is the story of that hour. And like any good story about going fast, it starts with a trip to the past.
-
----
-
-## 1985: The stack that ate my calendar
-
-Let me take you back to the original build. Cue the synth.
-
-To get ad events flowing, I stood up **Apache Kafka**. Topics, partitions, broker config, a ZooKeeper ensemble babysitting the whole thing. To land those events somewhere queryable, I wired up **Kafka Connect** with a sink connector and spent two days arguing with serialization formats.
-
-Then came the *actual* logic. Rolling-window features (clicks in the last hour, last 24 hours, last 7 days) meant **Kafka Streams** with stateful KTables, windowing semantics, and a RocksDB state store that I had to reason about every time I changed an aggregation. The propensity model lived in a separate **Python service** with its own deployment, its own scaling story, its own 3 a.m. pages.
-
-Serving needed sub-second lookups by user ID, so I bolted on **Cassandra**. The dashboard was a **Flask** app held together with optimism and CORS headers.
-
-Six systems. Six failure modes. The diagram looked impressive on a slide. It was miserable to operate.
-
-![Architecture comparison: 2017 six-system stack vs 2026 Snowflake platform](ad_streams_blog_images/01_architecture_comparison_gemini.png)
+## The original stack (2017)
 
 ```
 Kafka → Kafka Connect → Kafka Streams → Python ML svc → Cassandra → Flask
@@ -42,45 +22,35 @@ Kafka → Kafka Connect → Kafka Streams → Python ML svc → Cassandra → Fl
  ops        ops              ops            ops            ops        ops
 ```
 
-That was the past. Here's where the DeLorean comes in.
+![Architecture comparison: 2017 six-system stack vs 2026 Snowflake platform](ad_streams_blog_images/01_architecture_comparison_gemini.png)
+
+The rolling-window features (clicks in the last hour, 24 hours, 7 days) meant Kafka Streams with stateful KTables, a RocksDB state store, and a changelog topic for fault tolerance. The model was a hand-tuned Python service on its own box. Cassandra handled sub-second lookups. Flask served the dashboard.
+
+Most of the month went to integration, not logic.
 
 ---
 
-## The DeLorean was a terminal window
+## The rebuild (2026)
 
-I didn't set out to relive the project. I set out to test a theory.
-
-The theory: everything I built across six distributed systems in 2017 is now a feature *inside the data platform*. Not bolted on. Not "integrated." Native. And if that's true, then the right co-pilot should be able to drive the whole rebuild while I mostly described what I wanted.
-
-So I opened Cortex Code (Snowflake's agentic IDE), pointed it at my old project, and said, in effect: *do this again, but all on Snowflake.*
-
-Great Scott. It did.
-
-Not by generating one giant script and praying. It worked the way a good engineer works: specify, plan, build, verify. It narrated every step. I watched a month of architecture decisions collapse into a conversation.
-
-Here's what came out the other side.
-
----
-
-## 88 MPH: the hour, layer by layer
-
-Every box in that miserable 2017 diagram had a one-to-one replacement. The difference is that the new boxes don't need an ops team. They're SQL objects and managed services that live where the data already is.
+I opened Cortex Code, pointed it at the old project, and described what I wanted. It worked through it step by step: specify, plan, build, verify.
 
 ![Data flow: Datastream → Dynamic Tables → Model Registry → Interactive Table → App Runtime](ad_streams_blog_images/02_data_flow_diagram_gemini.png)
 
-| 2017 (a month) | 2026 (an hour) |
+| 2017 | 2026 (Snowflake) |
 |---|---|
-| Apache Kafka | Snowflake Datastream (Kafka-compatible, managed) |
+| Apache Kafka | Datastream (Kafka-compatible, managed) |
 | Kafka Connect | Snowpipe Streaming |
 | Kafka Streams + KTables | Dynamic Tables, incremental refresh |
 | Hand-rolled window state | Custom incrementalization (`MERGE INTO SELF`) |
-| Cassandra | Interactive Tables on an Interactive Warehouse |
-| External Python ML service | Snowflake Notebook (experiment) → Model Registry (serve) → Postgres Online FS (real-time) |
-| Flask | App Runtime (Next.js, deployed inside Snowflake) |
+| Cassandra | Interactive Tables + Interactive Warehouse |
+| Python ML service | Notebook → Model Registry → Postgres Online FS |
+| Flask | App Runtime (Next.js inside Snowflake) |
 
-Let me show you two moments that made me put the coffee down.
+---
 
-**The streaming features.** In Kafka Streams, a rolling 1h/24h/7d click count was a stateful topology I had to design, test, and operate. A windowed KTable backed by a RocksDB state store, plus a changelog topic to make it fault-tolerant. On Snowflake it became a Dynamic Table with *custom incrementalization*. The engine reads only the new rows since the last refresh (`CHANGES(INFORMATION => APPEND_ONLY)` on the base tables) and merges the deltas straight into a running aggregate:
+## What the code looks like
+
+**Incremental features.** The rolling aggregates that took a week of RocksDB topology design became a Dynamic Table with custom incrementalization. It reads only new rows since the last refresh and merges deltas into running counts:
 
 ```sql
 CREATE OR REPLACE DYNAMIC TABLE dt_user_features (...)
@@ -103,9 +73,7 @@ CREATE OR REPLACE DYNAMIC TABLE dt_user_features (...)
   );
 ```
 
-The week I spent on RocksDB topologies became a declarative refresh clause. I described the windows; the platform maintained the state.
-
-**The serving layer.** Cassandra existed in the old design for exactly one reason: sub-second point lookups by user ID under load. Snowflake's new Interactive Tables do that natively, off the same data, with no second database to keep in sync:
+**Serving.** An Interactive Table with a dedicated Interactive Warehouse handles sub-100ms point lookups. No separate database to keep in sync:
 
 ```sql
 CREATE OR REPLACE INTERACTIVE TABLE propensity_dashboard
@@ -120,9 +88,7 @@ CREATE OR REPLACE INTERACTIVE WAREHOUSE AD_STREAMS_INTERACTIVE_WH
   WAREHOUSE_SIZE = 'XSMALL';
 ```
 
-A dedicated Interactive Warehouse keeps the table hot in cache and enforces a 5-second query ceiling so a runaway query can't starve the dashboard. Scores flow from the gold Dynamic Table into the Interactive Table on a one-minute lag; the dashboard reads them in milliseconds. The old design needed a whole CDC pipeline to keep Cassandra in sync with the source of truth. Here, the source of truth *is* the serving layer.
-
-**The model.** In 2017 the propensity model was a Python service I eyeballed into existence. One algorithm, hand-tuned, deployed on its own box with its own scaling story. This time I opened a Snowflake Notebook, pulled the features with a line of SQL, and raced four model families (logistic regression, random forest, XGBoost, LightGBM) as tracked runs in a Snowflake ML Experiment:
+**ML.** I raced four model families in a Snowflake ML Experiment, registered the winner, and the Dynamic Table calls it by name:
 
 ```python
 for name, model in candidates.items():
@@ -132,32 +98,13 @@ for name, model in candidates.items():
         exp.log_metrics({"roc_auc": auc})
 ```
 
-I compared them side by side in Snowsight, logged the winner to the Model Registry, and pointed the pipeline at it. The Dynamic Table doesn't hardcode coefficients anymore. It calls the model by name:
-
 ```sql
 AD_PROPENSITY_MODEL!PREDICT_PROBA(clicks_1h, clicks_24h, ... , event_velocity_24h)
 ```
 
-Because the registered model is an immutable function, the Dynamic Table that consumes it stays incremental, no full rescans. A Model Monitor watches it for drift, a weekly task retrains it, and promoting a new champion is a one-line flip of the registry's default version. No redeploy.
+A Model Monitor watches for drift. A weekly task retrains. Promoting a new version is a one-liner.
 
-**Real-time, too.** The same scores serve two ways off one registry entry. Batch: through the incremental Dynamic Table into the Interactive Table for the dashboard. Real-time: through the Postgres-backed Online Feature Store, where the freshest score per user syncs to a managed Postgres serving layer that answers point lookups in about 10 milliseconds, with live features landing in under two seconds. In 2017 that second path would have been *another* system (Redis, maybe, with its own sync job). Here it's a config flag on a feature view.
-
-No connectors. No serialization fights. No 3 a.m. pages.
-
----
-
-## The part where the future got greedy
-
-Here's the thing about time travel: once you're moving, you don't stop at "good enough."
-
-In 2017, "ship the propensity dashboard" was the *entire* month. I never got to the features I actually wanted. With the hard part gone, I kept going, and the co-pilot kept up. I looked at what the real marketing-intelligence platforms ship, and I added it:
-
-- A campaign performance page with KPIs and a channel-by-hour heatmap, served sub-second from an Interactive Table.
-- Multi-touch attribution: first-touch, last-touch, linear, and time-decay models, computed live from user journey arrays.
-- An audience segment builder with point-and-click behavioral rules that compile to SQL and preview the matching cohort instantly.
-- An AI campaign optimizer using `AI_COMPLETE` to read live campaign metrics and write back specific, numeric recommendations, with an "intelligence trace" panel showing its reasoning.
-
-That last one is the kicker. In the old world, "add an AI that explains what's working" would have been its own quarter. A model to host, a serving endpoint, a prompt pipeline, a governance review. Here it was one SQL function over data that never left the building:
+**AI recommendations.** One SQL function call, no external API:
 
 ```sql
 SELECT AI_COMPLETE(
@@ -173,39 +120,30 @@ SELECT AI_COMPLETE(
 ) AS recommendation;
 ```
 
-No API key. No model deployment. The same RBAC that governs the underlying tables governs the model call. The "intelligence trace" panel in the UI just renders the steps the request walked through (data pull, analysis, recommendation) so a campaign manager sees the *why*, not just the answer.
-
-All of it deployed to a live, authenticated URL with a single command:
+**Deploy.** One command:
 
 ```bash
 snow app deploy
 ```
 
-No Dockerfile. No container registry. Snowflake builds the image from my `package.json`, versions it as an immutable package, and upgrades the running service in place. And to be honest: I skipped CI/CD entirely here because it was a one-shot rebuild. In production you'd want the opposite (version control, automated tests, promotion across dev and prod). The nice part is that this same one-line deploy is exactly what you'd drop into that pipeline. The app builds remotely, runs inside Snowflake's security perimeter, and inherits the governance the data already had.
+---
+
+## What else I added
+
+Because the pipeline was done in under an hour, I kept going:
+
+- Campaign performance page with KPIs and channel-by-hour heatmap
+- Multi-touch attribution (first-touch, last-touch, linear, time-decay)
+- Audience segment builder with behavioral rules that compile to SQL
+- AI campaign optimizer with an intelligence trace panel
+
+In 2017, shipping the propensity dashboard was the entire month. I never got to any of these.
 
 ---
 
-## This isn't about speed
+## The open-source comparison
 
-It would be easy to read this as "AI made me a fast typist." That misses it.
-
-The month in 2017 wasn't slow because I was writing code slowly. It was slow because the *architecture* was slow. Six systems, six integration seams, six things that could be misconfigured between an event and a score. Most of my month was spent in the *gaps between the boxes*, not inside them.
-
-What changed isn't that I type faster. The gaps are gone. Streaming, transformation, low-latency serving, machine learning, and the application all sit on one governed copy of the data. The integration work (the genuinely hard, genuinely month-long part) has been absorbed into the platform. The co-pilot just made it conversational.
-
-Roads were the integration layer. Where we're going, we don't need them.
-
----
-
-## "But open source has gotten better too"
-
-![The Assembly Gap: 2017 vs 2026 OSS vs 2026 Snowflake](ad_streams_blog_images/06_assembly_gap_gemini.png)
-
-Fair point. Let me steelman the counter-argument.
-
-If you built this same pipeline today with the *best* 2026 open-source stack (Redpanda, Flink 2.x, Feast, MLflow, Redis Cluster, BentoML, vLLM, Next.js, all on Kubernetes) it would genuinely be better than 2017. The tools are more mature, the DX is improved, Helm charts exist for everything.
-
-Here's what that looks like:
+To be fair: if you built this today with the best modern OSS (Redpanda, Flink 2.x, Feast, MLflow, Redis Cluster, BentoML, vLLM, Next.js on Kubernetes), it would be better than 2017. The tools are mature, Helm charts exist for everything.
 
 ```
 Redpanda → Flink → Feast/Redis → BentoML → FastAPI → Next.js
@@ -217,31 +155,23 @@ Redpanda → Flink → Feast/Redis → BentoML → FastAPI → Next.js
                       8 more pods
 ```
 
-30-35 pieces of infrastructure to maintain. A senior engineer could wire it together in 12-16 weeks, which is impressive progress from 2017's timeline. But you'd still be:
+![The Assembly Gap: 2017 vs 2026 OSS vs 2026 Snowflake](ad_streams_blog_images/06_assembly_gap_gemini.png)
 
-- Writing around 5,000 lines of code and config (Helm, Terraform, Flink SQL, Feast definitions, BentoML services)
-- Operating Kubernetes with GPU nodes for the LLM layer
-- Coordinating schema evolution across 6 boundaries (one mismatch = silent corruption)
-- Carrying a pager for Flink checkpoint recovery and Redis memory pressure
-- Paying $3-8K/month in infrastructure before a single query runs
+30-35 pieces of infrastructure. 12-16 weeks for a senior engineer. Around 5,000 lines of config. A pager. $3-8K/month before the first query.
 
-The Snowflake version was about 200 lines of code, zero infrastructure to maintain (it's a managed service), no pager, built in an afternoon. Not because OSS is bad. It's excellent. But *assembly* is the wrong abstraction level when the platform already speaks your intent natively.
+The Snowflake version: about 200 lines of code. No infrastructure. No pager. An afternoon.
 
-The gap isn't 2017 vs. 2026. It's "I assembled a system" vs. "I described what I wanted." That's the real time travel.
+The difference isn't the individual tools. It's that assembly is still the bottleneck, even with better parts.
 
 ---
 
-## So what?
+## Why this matters
 
-I didn't share this to flex a demo. I shared it because I think a lot of teams are still budgeting 2017 timelines for 2026 problems.
+Most of the month in 2017 wasn't spent writing logic. It was spent in the gaps between systems: serialization formats, sync pipelines, deployment configs, schema coordination. When those gaps go away, the work changes. You spend time on the actual problem instead of the plumbing around it.
 
-If your mental model of "build a real-time scoring pipeline" still includes standing up Kafka, you're carrying a month of work that no longer exists. The propensity engine, the attribution models, the audience builder, the AI recommendations, the deployed app: that was an afternoon, and most of the afternoon was me getting greedy about scope.
+If your team is still budgeting weeks for real-time pipelines, it might be worth checking whether the work you're planning still needs to exist.
 
-The interesting question is no longer "how do we build the plumbing?" It's "now that the plumbing is free, what do we actually build?"
-
-You don't need 1.21 gigawatts to start answering it. Just the data you already have, and the willingness to describe what you want out loud.
-
-Your DeLorean is already in the garage.
+The code is at [github.com/mars137/ad-streams-blog](https://github.com/mars137/ad-streams-blog). Setup instructions in the README.
 
 *— Atif*
 
@@ -249,4 +179,4 @@ Your DeLorean is already in the garage.
 
 ![Comparison table: Then vs Now by layer](ad_streams_blog_images/03_comparison_table_gemini.png)
 
-*Built on Snowflake with Datastream, Dynamic Tables, Interactive Tables, the Feature Store, Cortex AI, and App Runtime. Orchestrated end-to-end in Cortex Code. No roads required.*
+*Built on Snowflake with Datastream, Dynamic Tables, Interactive Tables, the Feature Store, Cortex AI, and App Runtime. Orchestrated in Cortex Code.*
