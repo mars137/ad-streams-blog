@@ -179,3 +179,5 @@ The code is at [github.com/mars137/ad-streams-blog](https://github.com/mars137/a
 ![Comparison table: Then vs Now by layer](ad_streams_blog_images/03_comparison_table_gemini.png)
 
 *Built on Snowflake with Datastream, Dynamic Tables, Interactive Tables, the Feature Store, Cortex AI, and App Runtime. Orchestrated in Cortex Code.*
+
+*This is a personal take based on my own data engineering experience, not a Snowflake feature, utility, or product position. See [LEGAL.md](LEGAL.md).*

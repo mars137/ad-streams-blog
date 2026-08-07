@@ -4,6 +4,10 @@ A complete real-time digital marketing propensity scoring pipeline — built ent
 
 ![Architecture: 2017 six-system stack vs 2026 Snowflake platform](ad_streams_blog_images/01_architecture_comparison_gemini.png)
 
+> **Not a Snowflake product.** This is a personal project based on my own data
+> engineering experience. It isn't a Snowflake feature or utility, and it isn't
+> supported by Snowflake. See [LEGAL.md](LEGAL.md).
+
 > **Note:** Snowflake Datastream is currently in **Private Preview**. The ingestion layer (Step 2) requires access to this feature. If your account doesn't have Datastream enabled, you can skip it and load data directly via the event simulator (Step 4).
 
 ---
