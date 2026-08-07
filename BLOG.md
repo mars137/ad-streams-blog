@@ -146,18 +146,17 @@ In 2017, shipping the propensity dashboard was the entire month. I never got to 
 To be fair: if you built this today with the best modern OSS (Redpanda, Flink 2.x, Feast, MLflow, Redis Cluster, BentoML, vLLM, Next.js on Kubernetes), it would be better than 2017. The tools are mature, Helm charts exist for everything.
 
 ```
-Redpanda → Flink → Feast/Redis → BentoML → FastAPI → Next.js
-    │         │         │            │          │         │
-  3 pods    5 pods    6 pods      3 pods     3 pods    2 pods
-                         │
-                    MLflow + Prefect + Iceberg + vLLM (GPU)
-                         │
-                      8 more pods
+Redpanda → Flink → Redis → BentoML → Next.js
+   1 pod   2 pods   1 pod    1 pod     1 pod
+                      │
+              MLflow + Prefect + vLLM
+                      │
+                    3 pods
 ```
 
-![The Assembly Gap: 2017 vs 2026 OSS vs 2026 Snowflake](ad_streams_blog_images/06_assembly_gap_gemini.png)
+![The Assembly Gap: Past, Present, and Future](ad_streams_blog_images/06_assembly_gap_gemini.png)
 
-30-35 pieces of infrastructure. 12-16 weeks for a senior engineer. Around 5,000 lines of config. A pager. $3-8K/month before the first query.
+That's about 12 pods, and that count is the floor: one replica each, no high availability. Turn on HA and it roughly triples, because Redpanda and Redis both want quorum. Either way it's 12-16 weeks for a senior engineer, a few thousand lines of config, a pager, and $3-8K/month before the first query.
 
 The Snowflake version: about 200 lines of code. No infrastructure. No pager. An afternoon.
 
