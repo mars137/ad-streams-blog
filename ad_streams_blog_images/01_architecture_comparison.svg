@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" font-family="Inter, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e293b"/>
+    </linearGradient>
+    <linearGradient id="redGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ef4444"/>
+      <stop offset="100%" style="stop-color:#dc2626"/>
+    </linearGradient>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#29b5e8"/>
+      <stop offset="100%" style="stop-color:#11a5d9"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="600" fill="url(#bgGrad)" rx="12"/>
+
+  <!-- Title -->
+  <text x="600" y="45" text-anchor="middle" fill="#f8fafc" font-size="22" font-weight="700">Architecture Comparison</text>
+
+  <!-- Left: 2017 -->
+  <text x="280" y="85" text-anchor="middle" fill="#f87171" font-size="16" font-weight="600">2017 — A Month of Work</text>
+  <text x="280" y="105" text-anchor="middle" fill="#94a3b8" font-size="12">6 systems · 6 failure modes · 6 ops burdens</text>
+
+  <!-- 2017 boxes -->
+  <g filter="url(#shadow)">
+    <rect x="60" y="125" width="180" height="55" rx="8" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.5"/>
+    <text x="150" y="148" text-anchor="middle" fill="#a5b4fc" font-size="11" font-weight="600">Apache Kafka</text>
+    <text x="150" y="168" text-anchor="middle" fill="#64748b" font-size="10">Topics, partitions, ZooKeeper</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="60" y="195" width="180" height="55" rx="8" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.5"/>
+    <text x="150" y="218" text-anchor="middle" fill="#a5b4fc" font-size="11" font-weight="600">Kafka Connect</text>
+    <text x="150" y="238" text-anchor="middle" fill="#64748b" font-size="10">Sink connector, serialization</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="60" y="265" width="180" height="55" rx="8" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.5"/>
+    <text x="150" y="288" text-anchor="middle" fill="#a5b4fc" font-size="11" font-weight="600">Kafka Streams + KTables</text>
+    <text x="150" y="308" text-anchor="middle" fill="#64748b" font-size="10">Windowed agg, RocksDB state</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="60" y="335" width="180" height="55" rx="8" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.5"/>
+    <text x="150" y="358" text-anchor="middle" fill="#a5b4fc" font-size="11" font-weight="600">Python ML Service</text>
+    <text x="150" y="378" text-anchor="middle" fill="#64748b" font-size="10">Own deploy, own scaling</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="60" y="405" width="180" height="55" rx="8" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.5"/>
+    <text x="150" y="428" text-anchor="middle" fill="#a5b4fc" font-size="11" font-weight="600">Cassandra</text>
+    <text x="150" y="448" text-anchor="middle" fill="#64748b" font-size="10">Sub-second lookups by user</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="60" y="475" width="180" height="55" rx="8" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.5"/>
+    <text x="150" y="498" text-anchor="middle" fill="#a5b4fc" font-size="11" font-weight="600">Flask App</text>
+    <text x="150" y="518" text-anchor="middle" fill="#64748b" font-size="10">CORS, manual deploy</text>
+  </g>
+
+  <!-- OPS labels on left -->
+  <g opacity="0.6">
+    <text x="265" y="158" fill="#f87171" font-size="10" font-weight="500">ops ↗</text>
+    <text x="265" y="228" fill="#f87171" font-size="10" font-weight="500">ops ↗</text>
+    <text x="265" y="298" fill="#f87171" font-size="10" font-weight="500">ops ↗</text>
+    <text x="265" y="368" fill="#f87171" font-size="10" font-weight="500">ops ↗</text>
+    <text x="265" y="438" fill="#f87171" font-size="10" font-weight="500">ops ↗</text>
+    <text x="265" y="508" fill="#f87171" font-size="10" font-weight="500">ops ↗</text>
+  </g>
+
+  <!-- Arrows between left boxes -->
+  <line x1="150" y1="180" x2="150" y2="195" stroke="#475569" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <line x1="150" y1="250" x2="150" y2="265" stroke="#475569" stroke-width="1.5"/>
+  <line x1="150" y1="320" x2="150" y2="335" stroke="#475569" stroke-width="1.5"/>
+  <line x1="150" y1="390" x2="150" y2="405" stroke="#475569" stroke-width="1.5"/>
+  <line x1="150" y1="460" x2="150" y2="475" stroke="#475569" stroke-width="1.5"/>
+
+  <!-- Center divider -->
+  <line x1="520" y1="80" x2="520" y2="560" stroke="#334155" stroke-width="1" stroke-dasharray="6,4"/>
+  <text x="520" y="570" text-anchor="middle" fill="#475569" font-size="11">→</text>
+
+  <!-- Right: 2026 -->
+  <text x="860" y="85" text-anchor="middle" fill="#29b5e8" font-size="16" font-weight="600">2026 — Under an Hour</text>
+  <text x="860" y="105" text-anchor="middle" fill="#94a3b8" font-size="12">1 platform · 0 integration seams · SQL objects</text>
+
+  <!-- Snowflake container -->
+  <rect x="580" y="120" width="560" height="440" rx="12" fill="none" stroke="#29b5e8" stroke-width="2" opacity="0.3"/>
+  <text x="600" y="143" fill="#29b5e8" font-size="10" font-weight="600" opacity="0.7">SNOWFLAKE</text>
+
+  <!-- 2026 boxes -->
+  <g filter="url(#shadow)">
+    <rect x="620" y="155" width="220" height="55" rx="8" fill="#0c4a6e" stroke="#29b5e8" stroke-width="1.5"/>
+    <text x="730" y="178" text-anchor="middle" fill="#7dd3fc" font-size="11" font-weight="600">Snowflake Datastream</text>
+    <text x="730" y="198" text-anchor="middle" fill="#64748b" font-size="10">Kafka-compatible, managed</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="620" y="225" width="220" height="55" rx="8" fill="#0c4a6e" stroke="#29b5e8" stroke-width="1.5"/>
+    <text x="730" y="248" text-anchor="middle" fill="#7dd3fc" font-size="11" font-weight="600">Snowpipe Streaming</text>
+    <text x="730" y="268" text-anchor="middle" fill="#64748b" font-size="10">Auto-ingest, zero connector mgmt</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="620" y="295" width="220" height="55" rx="8" fill="#0c4a6e" stroke="#29b5e8" stroke-width="1.5"/>
+    <text x="730" y="318" text-anchor="middle" fill="#7dd3fc" font-size="11" font-weight="600">Dynamic Tables</text>
+    <text x="730" y="338" text-anchor="middle" fill="#64748b" font-size="10">MERGE INTO SELF, incremental</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="620" y="365" width="220" height="55" rx="8" fill="#0c4a6e" stroke="#29b5e8" stroke-width="1.5"/>
+    <text x="730" y="388" text-anchor="middle" fill="#7dd3fc" font-size="11" font-weight="600">Model Registry + MLOps</text>
+    <text x="730" y="408" text-anchor="middle" fill="#64748b" font-size="10">Experiment, register, monitor</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="620" y="435" width="220" height="55" rx="8" fill="#0c4a6e" stroke="#29b5e8" stroke-width="1.5"/>
+    <text x="730" y="458" text-anchor="middle" fill="#7dd3fc" font-size="11" font-weight="600">Interactive Table + Warehouse</text>
+    <text x="730" y="478" text-anchor="middle" fill="#64748b" font-size="10">Sub-second, always-on cache</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="870" y="365" width="220" height="125" rx="8" fill="#0c4a6e" stroke="#29b5e8" stroke-width="1.5"/>
+    <text x="980" y="388" text-anchor="middle" fill="#7dd3fc" font-size="11" font-weight="600">App Runtime</text>
+    <text x="980" y="408" text-anchor="middle" fill="#64748b" font-size="10">Next.js, snow app deploy</text>
+    <text x="980" y="445" text-anchor="middle" fill="#7dd3fc" font-size="11" font-weight="600">Cortex AI</text>
+    <text x="980" y="465" text-anchor="middle" fill="#64748b" font-size="10">AI_COMPLETE, in-platform LLM</text>
+  </g>
+
+  <!-- Arrows on right -->
+  <line x1="730" y1="210" x2="730" y2="225" stroke="#29b5e8" stroke-width="1.5" opacity="0.6"/>
+  <line x1="730" y1="280" x2="730" y2="295" stroke="#29b5e8" stroke-width="1.5" opacity="0.6"/>
+  <line x1="730" y1="350" x2="730" y2="365" stroke="#29b5e8" stroke-width="1.5" opacity="0.6"/>
+  <line x1="730" y1="420" x2="730" y2="435" stroke="#29b5e8" stroke-width="1.5" opacity="0.6"/>
+
+  <!-- Cross arrows (mapping) -->
+  <g opacity="0.25" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,3">
+    <line x1="240" y1="152" x2="620" y2="182"/>
+    <line x1="240" y1="222" x2="620" y2="252"/>
+    <line x1="240" y1="292" x2="620" y2="322"/>
+    <line x1="240" y1="362" x2="620" y2="392"/>
+    <line x1="240" y1="432" x2="620" y2="462"/>
+    <line x1="240" y1="502" x2="870" y2="402"/>
+  </g>
+
+  <!-- Bottom stats -->
+  <rect x="60" y="550" width="180" height="30" rx="6" fill="#7f1d1d" opacity="0.6"/>
+  <text x="150" y="570" text-anchor="middle" fill="#fca5a5" font-size="11" font-weight="600">~30 days</text>
+  <rect x="620" y="550" width="180" height="30" rx="6" fill="#0c4a6e" opacity="0.6"/>
+  <text x="710" y="570" text-anchor="middle" fill="#7dd3fc" font-size="11" font-weight="600">&lt; 1 hour</text>
+</svg>

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="snowflake-source" content="cortex-agent-authored"/>
+  <title>Back to the Future Blog - Code Screenshots</title>
+  <script src="/libs/highlight.js@11.10.0/highlight.min.js"></script>
+  <link rel="stylesheet" href="/libs/highlight.js@11.10.0/github.min.css"/>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+      background: light-dark(#fafafa, #0f172a);
+      color: light-dark(#1f2937, #e5e7eb);
+      margin: 0; padding: 40px;
+    }
+    .code-card {
+      background: light-dark(#ffffff, #1e293b);
+      border: 1px solid light-dark(#e2e8f0, #334155);
+      border-radius: 12px;
+      margin: 24px 0;
+      overflow: hidden;
+      box-shadow: 0 4px 16px light-dark(rgba(0,0,0,0.08), rgba(0,0,0,0.4));
+      max-width: 820px;
+    }
+    .code-card-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 16px;
+      background: light-dark(#f8fafc, #0f172a);
+      border-bottom: 1px solid light-dark(#e2e8f0, #334155);
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-green { background: #22c55e; }
+    .code-card-title {
+      margin-left: 8px;
+      font-size: 12px;
+      color: light-dark(#64748b, #94a3b8);
+      font-weight: 500;
+    }
+    .code-card pre {
+      margin: 0;
+      padding: 20px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .code-card code {
+      font-family: inherit;
+    }
+    .section-label {
+      font-family: Inter, -apple-system, sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      color: light-dark(#475569, #94a3b8);
+      margin-top: 40px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    h1 {
+      font-family: Inter, -apple-system, sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      color: light-dark(#0f172a, #f1f5f9);
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-family: Inter, -apple-system, sans-serif;
+      font-size: 13px;
+      color: light-dark(#64748b, #94a3b8);
+      margin-bottom: 32px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Code Proof Points</h1>
+<p class="subtitle">Back to the Future: Accelerating Data Engineering and AI with Snowflake</p>
+
+<!-- Snippet 1: Dynamic Table with Custom Incrementalization -->
+<div class="section-label">Streaming Features &mdash; Dynamic Table</div>
+<div class="code-card">
+  <div class="code-card-header">
+    <span class="dot dot-red"></span>
+    <span class="dot dot-yellow"></span>
+    <span class="dot dot-green"></span>
+    <span class="code-card-title">dt_user_features.sql</span>
+  </div>
+  <pre><code class="language-sql">CREATE OR REPLACE DYNAMIC TABLE dt_user_features (...)
+  TARGET_LAG = DOWNSTREAM
+  WAREHOUSE = AD_STREAMS_WH
+  REFRESH USING (
+    MERGE INTO SELF AS tgt
+    USING (
+      SELECT user_id,
+             SUM(CASE WHEN event_type='CL'
+                      AND event_ts >= DATEADD('hour',-1,CURRENT_TIMESTAMP())
+                      THEN 1 ELSE 0 END) AS new_clicks_1h
+             -- ... 24h, 7d, impressions, paid search, conversions ...
+      FROM raw_marketing_events CHANGES(INFORMATION => APPEND_ONLY)
+      GROUP BY user_id
+    ) AS src
+    ON tgt.user_id = src.user_id
+    WHEN MATCHED THEN UPDATE SET tgt.clicks_1h = src.new_clicks_1h
+    WHEN NOT MATCHED THEN INSERT ...
+  );</code></pre>
+</div>
+
+<!-- Snippet 2: Interactive Table + Interactive Warehouse -->
+<div class="section-label">Serving Layer &mdash; Interactive Table</div>
+<div class="code-card">
+  <div class="code-card-header">
+    <span class="dot dot-red"></span>
+    <span class="dot dot-yellow"></span>
+    <span class="dot dot-green"></span>
+    <span class="code-card-title">interactive_serving.sql</span>
+  </div>
+  <pre><code class="language-sql">CREATE OR REPLACE INTERACTIVE TABLE propensity_dashboard
+  CLUSTER BY (score_bucket, user_id)
+  TARGET_LAG = '1 minute'
+  WAREHOUSE = AD_STREAMS_WH
+AS SELECT user_id, propensity_score, score_bucket, last_updated
+   FROM dt_user_propensity;
+
+CREATE OR REPLACE INTERACTIVE WAREHOUSE AD_STREAMS_INTERACTIVE_WH
+  TABLES (propensity_dashboard)
+  WAREHOUSE_SIZE = 'XSMALL';</code></pre>
+</div>
+
+<!-- Snippet 3: ML Experiment -->
+<div class="section-label">ML &mdash; Experiment Tracking</div>
+<div class="code-card">
+  <div class="code-card-header">
+    <span class="dot dot-red"></span>
+    <span class="dot dot-yellow"></span>
+    <span class="dot dot-green"></span>
+    <span class="code-card-title">propensity_model_dev.py</span>
+  </div>
+  <pre><code class="language-python">for name, model in candidates.items():
+    with exp.start_run(name):
+        model.fit(X_train, y_train)
+        auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
+        exp.log_metrics({"roc_auc": auc})</code></pre>
+</div>
+
+<!-- Snippet 4: Model Registry call -->
+<div class="section-label">Model Registry &mdash; Inference in SQL</div>
+<div class="code-card">
+  <div class="code-card-header">
+    <span class="dot dot-red"></span>
+    <span class="dot dot-yellow"></span>
+    <span class="dot dot-green"></span>
+    <span class="code-card-title">dt_user_propensity.sql</span>
+  </div>
+  <pre><code class="language-sql">AD_PROPENSITY_MODEL!PREDICT_PROBA(
+  clicks_1h, clicks_24h, clicks_7d,
+  impressions_1h, impressions_24h, impressions_7d,
+  paid_search_1h, paid_search_24h, paid_search_7d,
+  event_velocity_24h
+)</code></pre>
+</div>
+
+<!-- Snippet 5: AI_COMPLETE -->
+<div class="section-label">AI Intelligence &mdash; Cortex AI</div>
+<div class="code-card">
+  <div class="code-card-header">
+    <span class="dot dot-red"></span>
+    <span class="dot dot-yellow"></span>
+    <span class="dot dot-green"></span>
+    <span class="code-card-title">campaign_optimizer.sql</span>
+  </div>
+  <pre><code class="language-sql">SELECT AI_COMPLETE(
+  'claude-sonnet-4-6',
+  ARRAY_CONSTRUCT(
+    OBJECT_CONSTRUCT('role','system','content',
+      'You are a marketing intelligence AI. Analyze campaign
+       metrics and give 3 specific, numeric recommendations.'),
+    OBJECT_CONSTRUCT('role','user','content',
+      'Here are my live campaign metrics: ' || $campaign_json)
+  ),
+  OBJECT_CONSTRUCT('max_tokens', 1024)
+) AS recommendation;</code></pre>
+</div>
+
+<!-- Snippet 6: Deploy -->
+<div class="section-label">Deploy &mdash; One Command</div>
+<div class="code-card">
+  <div class="code-card-header">
+    <span class="dot dot-red"></span>
+    <span class="dot dot-yellow"></span>
+    <span class="dot dot-green"></span>
+    <span class="code-card-title">terminal</span>
+  </div>
+  <pre><code class="language-bash">snow app deploy</code></pre>
+</div>
+
+<script>
+  hljs.highlightAll();
+</script>
+</body>
+</html>
