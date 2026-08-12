@@ -1,36 +1,30 @@
-# LoCo for Data Engineering with CoCo
+# One Month to One Hour with CoCo
 
-*Low-code real-time pipelines, built conversationally.*
+*A 2017 real-time propensity engine, rebuilt conversationally in Cortex Code.*
 
 ![Hero: DeLorean in a data center with streaming cyan data](ad_streams_blog_images/00_hero_delorean_data_center.png)
 
 ---
 
-In 2017 I spent a month building a real-time marketing propensity engine. Ad events stream in (impressions, clicks, paid-search hits, conversions), you score every user on conversion likelihood, and you serve those scores to a dashboard fast enough for a campaign manager to act on them.
+Most of the month I spent building a real-time propensity engine in 2017 wasn't spent writing logic. It went into the gaps between systems: serialization formats, sync pipelines, deployment configs, schema coordination between six services that each had their own opinion about state.
 
-It took a month because the stack was a month of work: Kafka, Kafka Connect, Kafka Streams, a Python ML service, Cassandra, Flask. Six systems, each with its own failure mode.
+Last week I rebuilt the same thing in under an hour. Not because I got better at it, but because the gaps are gone.
 
-Last week I rebuilt the same thing in under an hour using Cortex Code. Here's what happened and how to reproduce it.
+That's the claim, and it has a specific consequence: if your team is still budgeting weeks for a real-time pipeline, the thing worth checking first is whether the work you're planning still needs to exist.
 
 ---
 
-## The original stack (2017)
+## The problem, both times
 
-```
-Kafka → Kafka Connect → Kafka Streams → Python ML svc → Cassandra → Flask
-  │          │                │              │              │          │
- ops        ops              ops            ops            ops        ops
-```
+Ad events stream in (impressions, clicks, paid-search hits, conversions). You score every user on conversion likelihood, and you serve those scores to a dashboard fast enough for a campaign manager to act on them.
+
+In 2017 that meant Kafka, Kafka Connect, Kafka Streams, a Python ML service, Cassandra, and Flask. Six systems, six failure modes, one month. The rolling-window features alone needed stateful KTables and a changelog topic for fault tolerance.
 
 ![Architecture comparison: 2017 six-system stack vs 2026 Snowflake platform](ad_streams_blog_images/01_architecture_comparison_gemini.png)
 
-The rolling-window features (clicks in the last hour, 24 hours, 7 days) meant Kafka Streams with stateful KTables, a RocksDB state store, and a changelog topic for fault tolerance. The model was a hand-tuned Python service on its own box. Cassandra handled sub-second lookups. Flask served the dashboard.
-
-Most of the month went to integration, not logic.
-
 ---
 
-## The rebuild (2026)
+## The rebuild
 
 I opened Cortex Code, pointed it at the old project, and described what I wanted. It worked through it step by step: specify, plan, build, verify.
 
@@ -43,7 +37,7 @@ I opened Cortex Code, pointed it at the old project, and described what I wanted
 | Kafka Streams + KTables | Dynamic Tables, incremental refresh |
 | Hand-rolled window state | Custom incrementalization (`MERGE INTO SELF`) |
 | Cassandra | Interactive Tables + Interactive Warehouse |
-| Python ML service | Notebook → Model Registry → Postgres Online FS |
+| Python ML service | Snowflake Notebook → Model Registry → Postgres Online FS |
 | Flask | App Runtime (Next.js inside Snowflake) |
 
 ---
@@ -88,7 +82,7 @@ CREATE OR REPLACE INTERACTIVE WAREHOUSE AD_STREAMS_INTERACTIVE_WH
   WAREHOUSE_SIZE = 'XSMALL';
 ```
 
-**ML.** I raced four model families in a Snowflake ML Experiment, registered the winner, and the Dynamic Table calls it by name:
+**ML.** Model development happened in a Snowflake Notebook, next to the data instead of on a laptop with a sampled extract. I raced four model families in a Snowflake ML Experiment and registered the winner:
 
 ```python
 for name, model in candidates.items():
@@ -97,6 +91,8 @@ for name, model in candidates.items():
         auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
         exp.log_metrics({"roc_auc": auc})
 ```
+
+Registering it turns the model into a function, which is the part that matters downstream. The Dynamic Table calls it by name and stays incremental, because a registered version is immutable:
 
 ```sql
 AD_PROPENSITY_MODEL!PREDICT_PROBA(clicks_1h, clicks_24h, ... , event_velocity_24h)
@@ -109,14 +105,8 @@ A Model Monitor watches for drift. A weekly task retrains. Promoting a new versi
 ```sql
 SELECT AI_COMPLETE(
   'claude-sonnet-4-6',
-  ARRAY_CONSTRUCT(
-    OBJECT_CONSTRUCT('role','system','content',
-      'You are a marketing intelligence AI. Analyze campaign
-       metrics and give 3 specific, numeric recommendations.'),
-    OBJECT_CONSTRUCT('role','user','content',
-      'Here are my live campaign metrics: ' || $campaign_json)
-  ),
-  OBJECT_CONSTRUCT('max_tokens', 1024)
+  'You are a marketing intelligence AI. Analyze these campaign metrics
+   and give 3 specific, numeric recommendations: ' || $campaign_json
 ) AS recommendation;
 ```
 
@@ -125,6 +115,33 @@ SELECT AI_COMPLETE(
 ```bash
 snow app deploy
 ```
+
+---
+
+## Getting it into CI
+
+Building it in an hour only matters if changing it later is also cheap, so the repo has a GitHub Actions workflow with two jobs.
+
+On merge to `main`, it applies the pipeline definitions and redeploys the app with the Snowflake CLI. There's nothing to build and no image to push, so the deploy job is a loop over SQL files and one `snow app deploy`.
+
+On pull requests, it installs the Cortex Code CLI and runs the same agent I built with, headlessly:
+
+```yaml
+- name: Install Cortex Code CLI
+  run: |
+    curl -LsS https://ai.snowflake.com/static/cc-scripts/install.sh | sh
+    echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+- name: Review changed pipeline code
+  run: |
+    cortex --print "Review the SQL and app changes in this pull request \
+      against the base branch. Focus on Dynamic Table incrementality: flag \
+      anything that would force a full refresh, break CHANGES(INFORMATION => \
+      APPEND_ONLY) reads, or make a downstream table non-incremental." \
+      > review.md
+```
+
+That review target is the specific thing I want caught. A small edit to a Dynamic Table can silently drop it from incremental to full refresh, and you find out from the bill rather than from an error. Asking a reviewer to watch for it is more reliable than remembering to check.
 
 ---
 
@@ -143,7 +160,7 @@ In 2017, shipping the propensity dashboard was the entire month. I never got to 
 
 ## The open-source comparison
 
-To be fair: if you built this today with the best modern OSS (Redpanda, Flink 2.x, Feast, MLflow, Redis Cluster, BentoML, vLLM, Next.js on Kubernetes), it would be better than 2017. The tools are mature, Helm charts exist for everything.
+Comparing against 2017 is a low bar, so here's the fairer version. If you built this today with the best modern OSS (Redpanda, Flink 2.x, MLflow, Redis Cluster, BentoML, vLLM, Next.js on Kubernetes), it would be much better than 2017. The tools are mature and Helm charts exist for everything.
 
 ```
 Redpanda → Flink → Redis → BentoML → Next.js
@@ -156,9 +173,9 @@ Redpanda → Flink → Redis → BentoML → Next.js
 
 ![The Assembly Gap: Past, Present, and Future](ad_streams_blog_images/06_assembly_gap_gemini.png)
 
-That's about 12 pods, and that count is the floor: one replica each, no high availability. Turn on HA and it roughly triples, because Redpanda and Redis both want quorum. Either way it's 12-16 weeks for a senior engineer, a few thousand lines of config, a pager, and $3-8K/month before the first query.
+That's about 12 pods, and that count is the floor: one replica each, no high availability. Turn on HA and it roughly triples, because Redpanda and Redis both want quorum. Either way you own a Kubernetes cluster, a few thousand lines of config, and a pager.
 
-The Snowflake version: about 200 lines of code. No infrastructure. No pager. An afternoon.
+The Snowflake version is about 200 lines of code and no infrastructure to maintain, because the equivalent of every pod above is a managed service you don't operate.
 
 The difference isn't the individual tools. It's that assembly is still the bottleneck, even with better parts.
 
@@ -166,9 +183,9 @@ The difference isn't the individual tools. It's that assembly is still the bottl
 
 ## Why this matters
 
-Most of the month in 2017 wasn't spent writing logic. It was spent in the gaps between systems: serialization formats, sync pipelines, deployment configs, schema coordination. When those gaps go away, the work changes. You spend time on the actual problem instead of the plumbing around it.
+The gaps between systems were never the interesting part of the job, but for a long time they were most of it. When they close, the work changes shape. You spend the time on the problem instead of the plumbing around it.
 
-If your team is still budgeting weeks for real-time pipelines, it might be worth checking whether the work you're planning still needs to exist.
+An hour instead of a month isn't really a statement about speed. It's that the month was mostly overhead, and overhead is the part worth deleting.
 
 The code is at [github.com/mars137/ad-streams-blog](https://github.com/mars137/ad-streams-blog). Setup instructions in the README.
 

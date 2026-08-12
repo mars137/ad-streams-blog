@@ -1,0 +1,107 @@
+name: Review and deploy
+
+on:
+  pull_request:
+    paths:
+      - 'sql/**'
+      - 'app/**'
+      - 'notebooks/**'
+  push:
+    branches: [main]
+    paths:
+      - 'sql/**'
+      - 'app/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: CoCo review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Snowflake connection
+        run: |
+          mkdir -p ~/.snowflake
+          cat > ~/.snowflake/connections.toml <<EOF
+          [default]
+          account = "${{ secrets.SNOWFLAKE_ACCOUNT }}"
+          user = "${{ secrets.SNOWFLAKE_USER }}"
+          password = "${{ secrets.SNOWFLAKE_PASSWORD }}"
+          warehouse = "AD_STREAMS_WH"
+          database = "DEMO_ATAHIR"
+          schema = "AD_STREAMS"
+          EOF
+          chmod 600 ~/.snowflake/connections.toml
+
+      - name: Install Cortex Code CLI
+        run: |
+          curl -LsS https://ai.snowflake.com/static/cc-scripts/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Review changed pipeline code
+        run: |
+          cortex --print "Review the SQL and app changes in this pull request \
+            against the base branch. Focus on Dynamic Table incrementality: flag \
+            anything that would force a full refresh, break CHANGES(INFORMATION => \
+            APPEND_ONLY) reads, or make a downstream table non-incremental. Be brief." \
+            > review.md 2>/dev/null || true
+          test -s review.md || echo "No review output produced." > review.md
+
+      - name: Comment review on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: fs.readFileSync('review.md', 'utf8'),
+            });
+
+  deploy:
+    name: Deploy pipeline
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Snowflake CLI
+        run: pip install --quiet snowflake-cli
+
+      - name: Configure Snowflake connection
+        run: |
+          mkdir -p ~/.snowflake
+          cat > ~/.snowflake/connections.toml <<EOF
+          [default]
+          account = "${{ secrets.SNOWFLAKE_ACCOUNT }}"
+          user = "${{ secrets.SNOWFLAKE_USER }}"
+          password = "${{ secrets.SNOWFLAKE_PASSWORD }}"
+          warehouse = "AD_STREAMS_WH"
+          database = "DEMO_ATAHIR"
+          schema = "AD_STREAMS"
+          EOF
+          chmod 600 ~/.snowflake/connections.toml
+
+      - name: Apply pipeline definitions
+        run: |
+          for f in sql/04_dynamic_tables.sql sql/05_serving.sql sql/07_campaign_dts.sql; do
+            echo "Applying $f"
+            snow sql -f "$f"
+          done
+
+      - name: Deploy app
+        working-directory: app
+        run: snow app deploy
