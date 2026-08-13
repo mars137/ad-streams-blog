@@ -84,9 +84,10 @@ CREATE OR REPLACE TASK retrain_propensity_task
 AS
     EXECUTE NOTEBOOK DEMO_ATAHIR.AD_STREAMS.propensity_model_dev();
 
--- Resume the monitoring task (retraining task left SUSPENDED until the
--- notebook is registered in Workspaces).
+-- Resume both tasks. The retraining task calls the notebook registered above,
+-- so it needs propensity_model_dev to exist in AD_STREAMS (see README step 6).
 ALTER TASK log_inferences_task RESUME;
+ALTER TASK retrain_propensity_task RESUME;
 
 -- =============================================================================
 -- Promotion workflow (manual or CI/CD):

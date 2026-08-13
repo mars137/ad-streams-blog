@@ -33,18 +33,43 @@ I opened Cortex Code, pointed it at the old project, and described what I wanted
 | 2017 | 2026 (Snowflake) |
 |---|---|
 | Apache Kafka | Datastream (Kafka-compatible, managed) |
-| Kafka Connect | Snowpipe Streaming |
+| Kafka Connect | Snowpipe Streaming through a `PIPE` |
 | Kafka Streams + KTables | Dynamic Tables, incremental refresh |
 | Hand-rolled window state | Custom incrementalization (`MERGE INTO SELF`) |
 | Cassandra | Interactive Tables + Interactive Warehouse |
 | Python ML service | Snowflake Notebook → Model Registry → Postgres Online FS |
 | Flask | App Runtime (Next.js inside Snowflake) |
 
+One caveat on the first row, since I would rather say it than have you find it. Datastream is in private preview, and on my account the broker path is not usable yet: a local broker registers with the management service, heartbeats, and gets back `Action type not implemented yet` for `ACTION_TYPE_BROKER_HEALTHCHECK`, then exits. The topics and consumer group provision fine, so the ingestion in this repo goes through Snowpipe Streaming directly rather than through a Kafka topic. Everything downstream of the bronze tables is unaffected.
+
 ---
 
 ## What the code looks like
 
-**Incremental features.** The rolling aggregates that took a week of RocksDB topology design became a Dynamic Table with custom incrementalization. It reads only new rows since the last refresh and merges deltas into running counts:
+**Ingestion.** Snowpipe Streaming writes rows through a `PIPE`, which is where schema validation and in-flight transforms happen:
+
+```sql
+CREATE OR REPLACE PIPE raw_marketing_events_pipe
+AS COPY INTO raw_marketing_events
+     (event_id, user_id, event_type, campaign_id, event_ts, properties)
+  FROM (
+    SELECT $1:event_id::VARCHAR, $1:user_id::VARCHAR, $1:event_type::VARCHAR,
+           $1:campaign_id::VARCHAR, $1:event_ts::TIMESTAMP_NTZ,
+           $1:properties::VARIANT
+    FROM TABLE (DATA_SOURCE(TYPE => 'STREAMING'))
+  );
+```
+
+The producer opens a channel per pipe and appends rows with an offset token. The token is what makes delivery exactly-once: on restart it reads back the last offset Snowflake committed and resumes there instead of replaying rows that are already durable.
+
+```python
+channel, status = client.open_channel("ad-streams-marketing-p0")
+next_offset = int(status.latest_committed_offset_token) + 1 \
+    if status.latest_committed_offset_token is not None else 0
+channel.append_row(row, str(next_offset))
+```
+
+**Incremental features.** The rolling aggregates that took a week of RocksDB topology design became a Dynamic Table with custom incrementalization. Raw events land in bronze, get unified and enriched by two upstream Dynamic Tables, and this one reads only the new rows since its last refresh and merges deltas into running counts:
 
 ```sql
 CREATE OR REPLACE DYNAMIC TABLE dt_user_features (...)
@@ -58,11 +83,13 @@ CREATE OR REPLACE DYNAMIC TABLE dt_user_features (...)
                       AND event_ts >= DATEADD('hour',-1,CURRENT_TIMESTAMP())
                       THEN 1 ELSE 0 END) AS new_clicks_1h
              -- ... 24h, 7d, impressions, paid search, conversions ...
-      FROM raw_marketing_events CHANGES(INFORMATION => APPEND_ONLY)
+      FROM dt_events_enriched CHANGES(INFORMATION => APPEND_ONLY)
       GROUP BY user_id
     ) AS src
     ON tgt.user_id = src.user_id
-    WHEN MATCHED THEN UPDATE SET tgt.clicks_1h = src.new_clicks_1h
+    WHEN MATCHED THEN UPDATE SET
+      tgt.clicks_1h = src.new_clicks_1h,               -- window resets
+      tgt.clicks_7d = tgt.clicks_7d + src.new_clicks_7d -- delta accumulates
     WHEN NOT MATCHED THEN INSERT ...
   );
 ```
@@ -98,17 +125,26 @@ Registering it turns the model into a function, which is the part that matters d
 AD_PROPENSITY_MODEL!PREDICT_PROBA(clicks_1h, clicks_24h, ... , event_velocity_24h)
 ```
 
-A Model Monitor watches for drift. A weekly task retrains. Promoting a new version is a one-liner.
+A Model Monitor watches for drift. A task retrains weekly on a Monday cron, calling the notebook directly with `EXECUTE NOTEBOOK`. Promoting a new version is one statement, `ALTER MODEL ... SET DEFAULT_VERSION`, and because the Dynamic Table calls the model by name rather than by version, nothing downstream needs to change.
 
 **AI recommendations.** One SQL function call, no external API:
 
 ```sql
 SELECT AI_COMPLETE(
   'claude-sonnet-4-6',
-  'You are a marketing intelligence AI. Analyze these campaign metrics
-   and give 3 specific, numeric recommendations: ' || $campaign_json
+  ARRAY_CONSTRUCT(
+    OBJECT_CONSTRUCT('role','system','content',
+      'You are a marketing intelligence AI. Analyze campaign
+       performance and give at most 3 recommendations with
+       expected impact. Be specific with numbers.'),
+    OBJECT_CONSTRUCT('role','user','content',
+      'Here are my live campaign metrics: ' || $campaign_json)
+  ),
+  OBJECT_CONSTRUCT('max_tokens', 1024)
 ) AS recommendation;
 ```
+
+The message-array form returns a JSON envelope, so the app pulls the text out of `choices[0]` rather than using the result directly.
 
 **Deploy.** One command:
 
@@ -175,7 +211,7 @@ Redpanda → Flink → Redis → BentoML → Next.js
 
 That's about 12 pods, and that count is the floor: one replica each, no high availability. Turn on HA and it roughly triples, because Redpanda and Redis both want quorum. Either way you own a Kubernetes cluster, a few thousand lines of config, and a pager.
 
-The Snowflake version is about 200 lines of code and no infrastructure to maintain, because the equivalent of every pod above is a managed service you don't operate.
+The Snowflake version has no infrastructure to maintain, because the equivalent of every pod above is a managed service you don't operate.
 
 The difference isn't the individual tools. It's that assembly is still the bottleneck, even with better parts.
 

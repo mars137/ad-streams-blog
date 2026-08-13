@@ -97,7 +97,8 @@ jobs:
 
       - name: Apply pipeline definitions
         run: |
-          for f in sql/04_dynamic_tables.sql sql/05_serving.sql sql/07_campaign_dts.sql; do
+          for f in sql/02b_pipes.sql sql/04_dynamic_tables.sql sql/05_serving.sql \
+                   sql/07_campaign_dts.sql sql/08_mlops.sql; do
             echo "Applying $f"
             snow sql -f "$f"
           done

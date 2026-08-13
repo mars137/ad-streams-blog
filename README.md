@@ -70,9 +70,10 @@ chmod +x scripts/01_datastream_setup.sh
 ```
 
 This creates:
-- A Kafka-compatible Datastream broker
-- Topics for marketing events and conversion events
-- Snowpipe Streaming pipes landing data into bronze tables
+- A Kafka-compatible Datastream
+- Topics for marketing events and conversion events, plus a consumer group
+
+> **Known preview gap.** Producing to a topic needs a running broker (`snow datastream broker launch`), and on my account the broker registers with the management service and then exits, because `ACTION_TYPE_BROKER_HEALTHCHECK` returns `Action type not implemented yet` server-side. Topic and consumer-group creation work. Ingestion in Step 3b does not depend on this, so you can skip Step 2 entirely.
 
 ### Step 3: Bronze Tables
 
@@ -82,13 +83,40 @@ snow sql -f sql/02_bronze.sql
 
 Creates `raw_marketing_events` and `raw_conversion_events` with change tracking enabled.
 
+### Step 3b: Snowpipe Streaming Pipes
+
+```bash
+snow sql -f sql/02b_pipes.sql
+```
+
+Creates one `PIPE` per bronze table. Snowpipe Streaming ingests through the pipe rather than writing to the table directly, so the pipe is where the column mapping and type casts live.
+
+Then stream events in. The producer needs key-pair auth, because the SDK does not accept passwords:
+
+```bash
+# One-time: generate a key and register the public half.
+openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM \
+  -out ~/.snowflake/keys/ad_streams_rsa_key.p8 -nocrypt
+chmod 600 ~/.snowflake/keys/ad_streams_rsa_key.p8
+openssl rsa -in ~/.snowflake/keys/ad_streams_rsa_key.p8 -pubout \
+  | grep -v '^-----' | tr -d '\n'
+# Paste that into:
+#   ALTER USER <you> SET RSA_PUBLIC_KEY_2 = '<key body>';
+# RSA_PUBLIC_KEY_2 is the rotation slot, so this leaves any existing key alone.
+
+pip install snowpipe-streaming
+python scripts/02_streaming_producer.py --duration 300 --rate 50
+```
+
+The producer keeps a long-lived channel per pipe and tracks an offset token per row, which is what gives exactly-once delivery across restarts. It prints the committed offset and error count every 10 seconds.
+
 ### Step 4: Event Simulator
 
 ```bash
 snow sql -f sql/03_simulator.sql
 ```
 
-Creates a stored procedure + scheduled task that generates realistic ad events (impressions, clicks, paid search, conversions) every minute. This works whether or not you have Datastream — it inserts directly into the bronze tables.
+Creates a stored procedure + scheduled task that generates realistic ad events (impressions, clicks, paid search, conversions) every minute. This is the batch backfill path, useful for building up history quickly; Step 3b is the streaming path. Both write to the same bronze tables.
 
 ### Step 5: Dynamic Table Pipeline
 
@@ -132,15 +160,27 @@ Creates:
 ### Step 6b: MLOps + Online Feature Store
 
 ```bash
+# The retrain task runs the notebook, so register it first or the task fails.
+snow sql -q "CREATE STAGE IF NOT EXISTS DEMO_ATAHIR.AD_STREAMS.notebooks_stage \
+  DIRECTORY=(ENABLE=TRUE)"
+snow stage copy notebooks/propensity_model_dev.ipynb \
+  @DEMO_ATAHIR.AD_STREAMS.notebooks_stage/
+snow notebook create DEMO_ATAHIR.AD_STREAMS.propensity_model_dev \
+  -f @DEMO_ATAHIR.AD_STREAMS.notebooks_stage/propensity_model_dev.ipynb
+
 snow sql -f sql/08_mlops.sql
 python sql/09_online_feature_store.py
 ```
 
 Sets up:
 - Model Monitor (drift detection)
-- Inference logging
-- Scheduled weekly retrain task
-- **Postgres Online Feature Store** for ~10ms real-time reads
+- Inference logging (hourly task)
+- Weekly retrain task, `USING CRON 0 6 * * 1 UTC`, calling the notebook via `EXECUTE NOTEBOOK`. Both tasks are resumed by the script, so they run once created.
+- **Postgres Online Feature Store** for real-time reads
+
+> The tasks are created in the `ML_REGISTRY` schema, not `AD_STREAMS`, so use `SHOW TASKS IN ACCOUNT` if you go looking for them.
+>
+> The Postgres online store is in preview and is not in the serving path for this app; the dashboard reads the Interactive Table. On this account it has timed out during cluster provisioning, and `09_online_feature_store.py` exits non-zero if that happens.
 
 ### Step 7: Deploy the Dashboard (App Runtime)
 
