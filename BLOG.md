@@ -28,7 +28,7 @@ In 2017 that meant Kafka, Kafka Connect, Kafka Streams, a Python ML service, Cas
 
 I opened Cortex Code, pointed it at the old project, and described what I wanted. It worked through it step by step: specify, plan, build, verify.
 
-![Data flow: Datastream → Dynamic Tables → Model Registry → Interactive Table → App Runtime](ad_streams_blog_images/02_data_flow_diagram_gemini.png)
+![Data flow: Snowpipe Streaming → Dynamic Tables → Model Registry → Interactive Table → App Runtime](ad_streams_blog_images/02_data_flow_diagram_gemini.png)
 
 | 2017 | 2026 (Snowflake) |
 |---|---|
@@ -231,6 +231,6 @@ The code is at [github.com/mars137/ad-streams-blog](https://github.com/mars137/a
 
 ![Comparison table: Then vs Now by layer](ad_streams_blog_images/03_comparison_table_gemini.png)
 
-*Built on Snowflake with Datastream, Dynamic Tables, Interactive Tables, the Feature Store, Cortex AI, and App Runtime. Orchestrated in Cortex Code.*
+*Built on Snowflake with Snowpipe Streaming, Dynamic Tables, Interactive Tables, the Feature Store, Cortex AI, and App Runtime. Orchestrated in Cortex Code.*
 
 *This is a personal take based on my own data engineering experience, not a Snowflake feature, utility, or product position. See [LEGAL.md](LEGAL.md).*

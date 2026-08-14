@@ -1,6 +1,13 @@
-"""Local runner that mirrors propensity_model_dev.ipynb.
-Executes the experiment + model registration against the demo_atahir account.
-The .ipynb is the interactive showcase; this produces the actual Snowflake artifacts.
+"""Local mirror of propensity_model_dev.ipynb, for running the experiment from a
+laptop against the demo_atahir account without opening the notebook.
+
+The notebook is the source of truth: retrain_propensity_task executes it weekly.
+Keep the candidate set and champion-selection logic here in sync with cells 5-8
+of the notebook, or the scheduled run and this script will disagree.
+
+Unlike the notebook, this pins version_name to V7 rather than deriving the next
+free version, so re-running it will fail once V7 exists. That is deliberate: it
+keeps ad-hoc local runs from quietly bumping the production version pointer.
 """
 from snowflake.snowpark import Session
 import pandas as pd
